@@ -84,7 +84,6 @@ main{padding:16px 0 40px}
  </div>
  <nav id="nav"></nav>
  <div class="meta" id="meta"></div>
- <div class="live" id="live" style="display:none"></div>
 </div></header>
 <main><div class="wrap" id="out"></div></main>
 <script>
@@ -156,63 +155,6 @@ document.getElementById('print').onclick=async()=>{
 applySize();
 render();
 
-const SHOP='bestuline-4835.myshopify.com';
-const TOKEN='40b6db7cb56e1f9708e8916e7db9908b';
-const VERSIONS=['2026-07','2026-04','2026-01','2025-10','2025-07','2025-04','2025-01'];
-const Q=`query($cursor:String){products(first:250,after:$cursor){pageInfo{hasNextPage endCursor}
- nodes{handle availableForSale onSale: compareAtPriceRange{maxVariantPrice{amount}}
-  base: priceRange{maxVariantPrice{amount} minVariantPrice{amount}}}}}`;
-
-async function gql(ver,cursor){
- const r=await fetch(`https://${SHOP}/api/${ver}/graphql.json`,{method:'POST',
-  headers:{'Content-Type':'application/json','X-Shopify-Storefront-Access-Token':TOKEN},
-  body:JSON.stringify({query:Q,variables:{cursor:cursor||null}})});
- if(!r.ok) throw new Error('HTTP '+r.status);
- const j=await r.json();
- if(j.errors&&j.errors.length) throw new Error(j.errors[0].message||'GraphQL error');
- return j.data.products;
-}
-
-async function liveCheck(){
- const el=document.getElementById('live');
- let ver=null,last=null;
- for(const v of VERSIONS){ try{ await gql(v,null); ver=v; break; }catch(e){ last=e; } }
- if(!ver){ el.style.display=''; el.className='live err'; el.textContent='Live check failed - showing saved data from '+(DATA.built||'the saved file'); return; }
-
- const live=new Map(); let cursor=null, pages=0;
- try{
-  while(pages<12){
-   const d=await gql(ver,cursor); pages++;
-   for(const n of d.nodes){
-     // amounts are read only to work out the discount percent; none are kept or shown
-     const lo=parseFloat(n.base.minVariantPrice.amount), hi=parseFloat(n.base.maxVariantPrice.amount);
-     const cap=n.onSale?parseFloat(n.onSale.maxVariantPrice.amount):0;
-     live.set(n.handle,{off: cap>hi ? Math.round((1-lo/cap)*100) : 0, avail:n.availableForSale});
-   }
-   if(!d.pageInfo.hasNextPage) break; cursor=d.pageInfo.endCursor;
-  }
- }catch(e){ el.style.display=''; el.className='live err'; el.textContent='Live check stopped - showing saved data from '+(DATA.built||'the saved file'); return; }
-
- if(live.size < DATA.prods.length*0.5){
-  el.style.display=''; el.className='live warn';
-  el.textContent=`Live check incomplete (${live.size}/${DATA.prods.length}) - publish products to the Headless channel`;
-  return;
- }
-
- let gone=0, oos=0;
- for(const p of DATA.prods){
-  const L=live.get(p.h);
-  if(!L){ p.gone=true; gone++; continue; }       // deleted / draft / unpublished -> hidden
-  p.gone=false;
-  p.oos = (L.avail===false);                      // tracked and every variant at 0 -> flagged
-  if(p.oos) oos++;
-  p.sale = L.off > 0;
-  p.off  = L.off;
- }
- el.style.display='none';   // all good: say nothing
- render();
-}
-liveCheck();
 function applySize(){const[c,r]=document.getElementById('sz').value.split('|');
  document.body.style.setProperty('--cols',c); document.body.style.setProperty('--ratio',r);}
 </script></body></html>
